@@ -1,53 +1,144 @@
-import google.generativeai as genai
-import os
 
-# --- Security Best Practice: Get API Key from Environment Variable ---
-# IMPORTANT: Set your GOOGLE_API_KEY environment variable before running this script.
-# For example, in your terminal: export GOOGLE_API_KEY="YOUR_API_KEY_HERE"
-try:
-    api_key = os.environ["GOOGLE_API_KEY"]
-    genai.configure(api_key=api_key)
-except KeyError:
+import os
+from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI, HarmBlockThreshold, HarmCategory
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
+# --- Security Best Practice: Get API Key from .env file ---
+load_dotenv()
+
+# Check if the API key is available
+if "GOOGLE_API_KEY" not in os.environ:
     print("🚨 Error: GOOGLE_API_KEY environment variable not set.")
-    print("Please set your API key to run this script.")
+    print("Please create a .env file and set your API key to run this script.")
     exit()
 
+# --- Initialize the LLM ---
+# Using a newer, widely available model to ensure compatibility.
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash-latest",
+    convert_system_message_to_human=True,
+    safety_settings={
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    },
+)
+
+# --- Initialize the Vision LLM ---
+# The same modern model can handle both text and vision.
+vision_llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash-latest",
+    safety_settings={
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    },
+)
+
+
 def generate_post_idea():
-    """Generates a new post idea using the Gemini API."""
-    model = genai.GenerativeModel('gemini-flash-latest')
-    # More specific prompt for a public figure page
-    prompt = """
-    أنا شخصية عامة صفحتي على فيسبوك هي عن محمد الكيلاني.
-    أريد فكرة بوست جديدة ومبتكرة تزيد من تفاعل المتابعين.
-    اقترح فكرة واحدة فقط، مع وصف مختصر لكيفية تنفيذها (مثلاً: صورة معينة، سؤال للجمهور، الخ).
-    """
-    print("\n🤖 جارٍ التفكير في فكرة بوست...")
-    response = model.generate_content(prompt)
-    print("✨ فكرة مقترحة:")
-    print(response.text)
-    print("-" * 20)
+    """Generates a new post idea using the LangChain and Gemini API."""
+    try:
+        print("✨ مرحبًا بك في مولد أفكار المنشورات!")
+        print("---")
+        topic = input("🤔 ما هو الموضوع الذي يدور في ذهنك؟ (مثال: تسويق بالمحتوى) ")
+        platform = input("🎯 ما هي المنصة التي ستنشر عليها؟ (مثال: مدونة, تويتر, انستغرام) ")
+        goal = input("🚀 ما هو الهدف من هذا المنشور؟ (مثال: زيادة الوعي, جذب عملاء) ")
+
+        # --- Create the Prompt ---
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessage(content="أنت مساعد خبير في إنشاء أفكار للمحتوى على وسائل التواصل الاجتماعي."),
+            HumanMessagePromptTemplate.from_template("أريد فكرة منشور حول '{topic}' لمنصة '{platform}'. الهدف هو '{goal}'. اقترح فكرة واحدة مبتكرة وجذابة."),
+        ])
+
+        # --- Create the Chain ---
+        chain = prompt | llm | StrOutputParser()
+
+        print("\n🤖 حسنًا! أفكر في فكرة رائعة لك...\n")
+
+        # --- Invoke the Chain ---
+        response = chain.invoke({"topic": topic, "platform": platform, "goal": goal})
+
+        print("🎉 فكرتك الجديدة للمنشور 🎉")
+        print("---")
+        print(response)
+        print("---separated_spec---")
+
+    except Exception as e:
+        print(f"😭 حدث خطأ: {e}")
+
 
 def generate_caption_for_image():
-    """Generates a caption for an image."""
-    print("\n🖼️ هذه الميزة قيد التطوير وسيتم إضافتها قريباً.")
-    print("سوف نستخدم الصور الموجودة في المشروع: baked_goods_1.jpg, baked_goods_2.jpg, baked_goods_3.jpg")
-    print("-" * 20)
-    # Placeholder for future implementation using a multimodal model
-    # model = genai.GenerativeModel('gemini-pro-vision')
-    # ... code to select image and generate caption ...
+    """Generates a caption for an image using LangChain and the Gemini Vision API."""
+    import base64
+    import io
+    from PIL import Image
+
+    try:
+        print("✨ مرحبًا بك في مولد التعليقات على الصور!")
+        print("---")
+        
+        image_path = input("🖼️ من فضلك أدخل المسار إلى صورتك: ")
+        if not os.path.exists(image_path):
+            print("❌ عذرًا, لم أتمكن من العثور على الملف في هذا المسار.")
+            return
+
+        try:
+            # Function to encode the image
+            def encode_image(image_path):
+                with open(image_path, "rb") as image_file:
+                    return base64.b64encode(image_file.read()).decode('utf-8')
+
+            base64_image = encode_image(image_path)
+        except Exception as e:
+            print(f"❌ لا يمكن فتح أو معالجة الصورة في المسار: {image_path}. تأكد من أنه ملف صورة صالح. الخطأ: {e}")
+            return
+        
+        caption_goal = input("🚀 ما هو الهدف من التعليق؟ (مثال: بيع منتج, زيادة التفاعل) ")
+        tone = input("🎭 ما هي نبرة التعليق؟ (مثال: ودود, احترافي, فكاهي) ")
+        
+        # --- Create the Message ---
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": f"اكتب تعليقًا لهذه الصورة. الهدف هو '{caption_goal}' والنبرة يجب أن تكون '{tone}'. أضف هاشتاقات ذات صلة.",
+                },
+                {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64_image}"},
+            ]
+        )
+
+        print("\n🤖 حسنًا! أقوم بتحليل الصورة وكتابة تعليق...\n")
+
+        # --- Invoke the Model ---
+        response = vision_llm.invoke([message])
+
+        print("🎉 تعليقك الجديد 🎉")
+        print("---")
+        print(response.content)
+        print("---separated_spec---")
+
+    except Exception as e:
+        print(f"😭 حدث خطأ: {e}")
 
 
 def main():
-    """The main function to run the content assistant."""
-    while True:
-        print("\n--- مساعد المحتوى - القائمة الرئيسية ---")
-        print("مرحباً بك في مساعد المحتوى الخاص بك!")
-        print("ماذا تريد أن تفعل اليوم؟")
-        print("1. اقتراح فكرة بوست جديدة")
-        print("2. كتابة تعليق (caption) لصورة (قيد التطوير)")
-        print("3. الخروج")
+    """The main function of the content assistant."""
+    print("👋 مرحبًا بك في مساعد المحتوى الخاص بك!")
+    print("أنا هنا لمساعدتك في إنشاء محتوى رائع باستخدام Gemini.")
 
-        choice = input("ادخل اختيارك (1, 2, or 3): ")
+    while True:
+        print("\n--- القائمة الرئيسية ---")
+        print("1. 💡 إنشاء فكرة منشور جديدة")
+        print("2. 📸 إنشاء تعليق على صورة")
+        print("3. 👋 الخروج")
+        
+        choice = input("🔧 ماذا تريد أن تفعل؟ (اختر 1, 2, أو 3): ")
 
         if choice == '1':
             generate_post_idea()
